@@ -1,0 +1,66 @@
+# ------------------------------
+# OS／エディタ 共通
+# ------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+package*
+
+# ------------------------------
+# Python／Django
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.cover
+*.coverage
+*.mypy_cache/
+.pytest_cache/
+.env
+.env.*
+.envrc
+.Python
+venv/
+.venv/
+ENV/
+env/
+# dev 用 sqlite
+*.sqlite3
+# collectstatic 出力先
+staticfiles/
+# ユーザーアップロード
+media/
+
+# ------------------------------
+# Node／Next.js／React
+# ------------------------------
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+.pnp.*
+# ビルド成果物
+.next/
+out/
+dist/
+build/
+.vercel/
+.turbo/
+coverage/
+# 環境ファイル（フロント用）
+.env.local
+.env.development
+.env.production
+
+# ------------------------------
+# Docker／Compose
+# ------------------------------
+docker-compose.override.yml
+# ローカルボリューム／キャッシュ
+storage/
+*.log

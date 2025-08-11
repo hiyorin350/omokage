@@ -1,0 +1,44 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:15
+    env_file:
+      - ./backend/.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    # ここはそのまま
+    env_file:
+      - ./backend/.env
+    # DB ホストだけ明示的に上書き（.env 側と重複していても問題なし）
+    environment:
+      POSTGRES_HOST: db
+    volumes:
+      - ./backend:/app
+      - media:/app/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      NEXT_PUBLIC_API_BASE: "http://backend:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  media:

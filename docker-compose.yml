@@ -28,16 +28,21 @@ services:
 
   frontend:
     build: ./frontend
-    command: npm run dev
+    command: npm run dev -- -H 0.0.0.0   # ← 外部からアクセス可
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      NEXT_PUBLIC_API_BASE: "http://backend:8000"
+      # ★重要：ブラウザから直接Djangoを叩くなら localhost を使う
+      # （"backend" は Docker 内ホスト名で、ブラウザからは解決されません）
+      NEXT_PUBLIC_API_BASE: "http://localhost:8000"
+      WATCHPACK_POLLING: "true"          # HMR安定化
+      CHOKIDAR_USEPOLLING: "true"        # HMR安定化
     ports:
       - "3000:3000"
     depends_on:
       - backend
+
 
 volumes:
   pgdata:

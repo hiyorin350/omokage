@@ -163,6 +163,20 @@ export default function Page() {
     setStep(3);
   }
 
+  // --- ②→① / ③→②: 戻る ---
+  function handleBack() {
+    if (step === 3) {
+      // ③→②：選び直しできるように一旦確定画像はクリア
+      setResultUrl(null);
+      setStep(2);
+      return;
+    }
+    if (step === 2) {
+      // ②→①：入力に戻る（入力値は保持）
+      setStep(1);
+    }
+  }
+
   // --- ③ 修正 ---
   async function handleRefine() {
     if (!resultUrl) return;
@@ -209,6 +223,20 @@ export default function Page() {
             {notice}
           </Alert.Root>
         )}
+
+        {/* ← ここで 戻るボタン */}
+        {step > 1 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleBack}
+            disabled={loading}
+            mb={4}
+          >
+            ← 戻る
+          </Button>
+        )}
+
         {/* ① 入力 */}
         {step === 1 && (
           <Card.Root>

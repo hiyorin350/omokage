@@ -36,8 +36,8 @@ const VantaNetBg = () => {
       effectRef.current = NET({
         el: ref.current,
         THREE,
-        backgroundAlpha: 0.0, // Chakra側の背景を活かす
-        color: 0x7c3aed,      // ネットの色（violet系）
+        backgroundAlpha: 0.0,
+        color: 0x7c3aed,
         points: 12.0,
         maxDistance: 20.0,
         spacing: 18.0,
@@ -51,15 +51,13 @@ const VantaNetBg = () => {
     return () => {
       mounted = false;
       if (effectRef.current) {
-        effectRef.current.destroy();
+        try { effectRef.current.destroy(); } catch {}
         effectRef.current = null;
       }
     };
   }, []);
 
-  return (
-    <Box ref={ref} position="absolute" inset={0} pointerEvents="none" />
-  );
+  return <Box ref={ref} position="absolute" inset={0} pointerEvents="none" />;
 };
 
 // === 追加オーバーレイ: 数本の装飾ライン ===
@@ -86,13 +84,36 @@ const OverlayLines = () => (
   </chakra.svg>
 );
 
-// 3つの画面構成に対応：
-// ① 入力 → ② 似ている方を選択 → ③ 選んだ画像の修正
-// APIは /api/generate, /api/refine, /api/complete を想定（未実装ならサンプル画像でフォールバック）
+// API は相対パス固定（本番は Nginx / 開発は Next の rewrites で /api を中継）
+const API = {
+  generate: '/api/generate',
+  refine: '/api/refine',
+  complete: '/api/complete',
+};
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
+
+// フェッチ（JSON＋詳細エラー＋タイムアウト＋Cookie対応）
+async function postJSON<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',   // 将来 Cookie 認証を入れる前提
+    cache: 'no-store',
+    body: JSON.stringify(body),
+    signal,
+  });
+  const text = await res.text();
+  let data: any = undefined;
+  try { data = text ? JSON.parse(text) : undefined; } catch {}
+  if (!res.ok) {
+    const msg = (data?.error && typeof data.error === 'string') ? data.error : text || res.statusText;
+    throw new Error(msg);
+  }
+  return (data ?? {}) as T;
+}
 
 export default function Page() {
   type Step = 1 | 2 | 3;
-  // v3: useToast は廃止。簡易通知は Alert + state で代替。
 
   // --- UI/状態 ---
   const [step, setStep] = useState<Step>(1);
@@ -119,37 +140,39 @@ export default function Page() {
     [gender, hair, age, similarTo, features]
   );
 
-  // --- API helper（失敗時は投げる）---
-  async function postJSON<T>(url: string, body: unknown): Promise<T> {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const msg = await res.text();
-      throw new Error(msg || res.statusText);
+  // リクエスト多重送信防止＆タイムアウト
+  const inflight = useRef<AbortController | null>(null);
+  function newSignal(ms = 30000) {
+    if (inflight.current) inflight.current.abort();
+    const ac = new AbortController();
+    inflight.current = ac;
+    if (ms > 0) {
+      const t = setTimeout(() => ac.abort(), ms);
+      // リクエスト完了でクリア
+      const _abort = ac.abort.bind(ac);
+      ac.abort = () => { clearTimeout(t); _abort(); };
     }
-    return res.json();
+    return ac.signal;
   }
 
   // --- ①→②: 画像生成（2枚）---
   async function handleStart(e?: React.FormEvent) {
     e?.preventDefault();
+    if (loading) return;
     setLoading(true);
+    setNotice(null);
     try {
       type GenerateResponse = { options: [string, string] };
-      const data = await postJSON<GenerateResponse>('/api/generate', payload);
+      const data = await postJSON<GenerateResponse>(`${API_BASE}/api/generate`, payload);
       const [a, b] = data.options ?? [];
       setOptionA(a ?? '/images/sample_a.PNG');
       setOptionB(b ?? '/images/sample_b.PNG');
       setStep(2);
-    } catch (err) {
-      // API未実装などのときはダミーで進行
+    } catch (err: any) {
       setOptionA('/images/sample_a.PNG');
       setOptionB('/images/sample_b.PNG');
       setStep(2);
-      setNotice('デモモードで表示中: APIが未実装のためサンプル画像を表示しています。');
+      setNotice(`デモ表示: APIエラーによりサンプルで進行します（${err?.message ?? 'unknown error'}）`);
     } finally {
       setLoading(false);
     }
@@ -157,6 +180,7 @@ export default function Page() {
 
   // --- ②→③: どちらか選択 ---
   function handlePick(which: 'a' | 'b') {
+    if (loading) return;
     const url = which === 'a' ? optionA : optionB;
     if (!url) return;
     setResultUrl(url);
@@ -165,33 +189,31 @@ export default function Page() {
 
   // --- ②→① / ③→②: 戻る ---
   function handleBack() {
+    if (loading) return;
     if (step === 3) {
-      // ③→②：選び直しできるように一旦確定画像はクリア
       setResultUrl(null);
       setStep(2);
       return;
     }
-    if (step === 2) {
-      // ②→①：入力に戻る（入力値は保持）
-      setStep(1);
-    }
+    if (step === 2) setStep(1);
   }
 
   // --- ③ 修正 ---
   async function handleRefine() {
-    if (!resultUrl) return;
+    if (!resultUrl || loading) return;
     setLoading(true);
+    setNotice(null);
     try {
       type RefineResponse = { url: string };
-      const data = await postJSON<RefineResponse>('/api/refine', {
+      const data = await postJSON<RefineResponse>(`${API_BASE}/api/complete`, {
         selected: resultUrl,
         note: fixNote,
         context: payload,
-      });
+      }, newSignal());
       setResultUrl(data.url || resultUrl);
       setNotice('修正完了: 画像を更新しました。');
-    } catch (err) {
-      setNotice('修正に失敗しました');
+    } catch (err: any) {
+      setNotice(`修正に失敗しました: ${err?.message ?? 'unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -199,13 +221,14 @@ export default function Page() {
 
   // --- ③ 完了 ---
   async function handleComplete() {
-    if (!resultUrl) return;
+    if (!resultUrl || loading) return;
     setLoading(true);
+    setNotice(null);
     try {
-      await postJSON('/api/complete', { imageUrl: resultUrl, meta: payload });
+      await postJSON(`${API_BASE}/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal());
       setNotice('保存しました');
-    } catch (err) {
-      setNotice('保存に失敗しました');
+    } catch (err: any) {
+      setNotice(`保存に失敗しました: ${err?.message ?? 'unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -224,15 +247,9 @@ export default function Page() {
           </Alert.Root>
         )}
 
-        {/* ← ここで 戻るボタン */}
+        {/* ← 戻るボタン */}
         {step > 1 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleBack}
-            disabled={loading}
-            mb={4}
-          >
+          <Button variant="ghost" size="sm" onClick={handleBack} disabled={loading} mb={4}>
             ← 戻る
           </Button>
         )}
@@ -249,6 +266,7 @@ export default function Page() {
                     borderColor={gender === 'male' ? 'blue.400' : 'gray.300'}
                     color={gender === 'male' ? 'blue.500' : 'gray.600'}
                     onClick={() => setGender('male')}
+                    disabled={loading}
                   >
                     <Text as="span" mr={2} fontSize="lg">♂</Text>
                     男
@@ -258,6 +276,7 @@ export default function Page() {
                     borderColor={gender === 'female' ? 'pink.400' : 'gray.300'}
                     color={gender === 'female' ? 'pink.500' : 'gray.600'}
                     onClick={() => setGender('female')}
+                    disabled={loading}
                   >
                     <Text as="span" mr={2} fontSize="lg">♀</Text>
                     女
@@ -270,6 +289,7 @@ export default function Page() {
                     placeholder="例: ショートカット、ボブ、肩までのロング、黒髪、茶髪…"
                     value={hair}
                     onChange={(e) => setHair(e.target.value)}
+                    disabled={loading}
                   />
                 </Field.Root>
 
@@ -286,6 +306,7 @@ export default function Page() {
                       colorPalette="pink"
                       w="full"
                       maxW="820px"
+                      disabled={loading}
                     >
                       <HStack justify="space-between" mb={2}>
                         <Slider.Label>年齢</Slider.Label>
@@ -305,9 +326,10 @@ export default function Page() {
                 <Field.Root>
                   <Field.Label>似ている芸能人</Field.Label>
                   <Textarea
-                    placeholder="例: 〜〜"
+                    placeholder="例: 〜〜（※実在の人物名は“雰囲気”として扱われます）"
                     value={similarTo}
                     onChange={(e) => setSimilarTo(e.target.value)}
+                    disabled={loading}
                   />
                 </Field.Root>
 
@@ -317,11 +339,19 @@ export default function Page() {
                     placeholder="例: 二重、鼻が高い…"
                     value={features}
                     onChange={(e) => setFeatures(e.target.value)}
+                    disabled={loading}
                   />
                 </Field.Root>
 
                 <HStack justify="center">
-                  <Button type="submit" colorPalette="pink" px={8} borderRadius="xl" loading={loading} loadingText="生成中…">
+                  <Button
+                    type="submit"
+                    colorPalette="pink"
+                    px={8}
+                    borderRadius="xl"
+                    loading={loading}
+                    loadingText="生成中…"
+                  >
                     Start!!
                   </Button>
                 </HStack>
@@ -379,10 +409,22 @@ export default function Page() {
               borderRadius="md"
             />
             <HStack gap={4}>
-              <Button variant="outline" borderColor="blue.400" color="blue.500" onClick={handleComplete} loading={loading}>
+              <Button
+                variant="outline"
+                borderColor="blue.400"
+                color="blue.500"
+                onClick={handleComplete}
+                loading={loading}
+              >
                 完成
               </Button>
-              <Button variant="outline" borderColor="pink.400" color="pink.500" onClick={handleRefine} loading={loading}>
+              <Button
+                variant="outline"
+                borderColor="pink.400"
+                color="pink.500"
+                onClick={handleRefine}
+                loading={loading}
+              >
                 修正
               </Button>
             </HStack>
@@ -392,6 +434,7 @@ export default function Page() {
                 placeholder="例: もっと目がぱっちり"
                 value={fixNote}
                 onChange={(e) => setFixNote(e.target.value)}
+                disabled={loading}
               />
             </Field.Root>
           </VStack>

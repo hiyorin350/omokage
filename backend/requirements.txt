@@ -1,6 +1,8 @@
-Django>=4
+Django>=5,<6
 djangorestframework
 django-cors-headers
-Pillow
 python-dotenv
+Pillow
+requests
+openai>=1,<2
 psycopg2-binary

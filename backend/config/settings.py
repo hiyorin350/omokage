@@ -2,14 +2,22 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# === パス設定 ===
+BASE_DIR = Path(__file__).resolve().parent.parent  # .../backend
+# backend/.env を明示的に読む（manage.py と同じ階層）
+load_dotenv(BASE_DIR / ".env")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# --- 小ユーティリティ ---
+def _csv_env(key: str, default: str = ""):
+    raw = os.getenv(key, default)
+    return [x.strip() for x in raw.split(",") if x.strip()]
 
 # --- 基本 ---
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = [h for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,backend").split(",") if h]
+ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS", "localhost,127.0.0.1,backend")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_ORG_ID  = os.getenv("OPENAI_ORG_ID", "")
 
 # --- アプリ ---
 INSTALLED_APPS = [
@@ -37,14 +45,23 @@ MIDDLEWARE = [
 ]
 
 # --- CORS/CSRF ---
-# 開発時：ブラウザ発 origin を許可（Next開発サーバ）
-CORS_ALLOWED_ORIGINS = [
-    os.getenv("CORS_ORIGIN_FRONTEND", "http://localhost:3000"),
-    "http://127.0.0.1:3000",
-]
-CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
-# 認証を付ける場合は必要に応じて有効化
-# CORS_ALLOW_CREDENTIALS = True
+# 環境変数で切替え。開発中(デフォルト)は全許可、
+# 本番は明示リストに制限することを推奨。
+if os.getenv("CORS_ALLOW_ALL_ORIGINS", "1" if DEBUG else "0") == "1":
+    CORS_ALLOW_ALL_ORIGINS = True
+    # CSRF は必要なオリジンを別途列挙（空なら無設定）
+    _csrf_list = _csv_env("CSRF_TRUSTED_ORIGINS", "")
+    if _csrf_list:
+        CSRF_TRUSTED_ORIGINS = _csrf_list
+else:
+    CORS_ALLOWED_ORIGINS = _csv_env(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    )
+    CSRF_TRUSTED_ORIGINS = _csv_env(
+        "CSRF_TRUSTED_ORIGINS",
+        ",".join(CORS_ALLOWED_ORIGINS),
+    )
 
 ROOT_URLCONF = "config.urls"
 
@@ -95,5 +112,12 @@ REST_FRAMEWORK = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-OPENAI_KEY   = os.getenv("OPENAI_KEY", "")      # .env か環境変数から読む
+# --- OpenAI 画像生成 ---
+# 標準の OPENAI_API_KEY を優先。互換のため OPENAI_KEY もフォールバックで読む。
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY", "")
 IMAGES_MODEL = os.getenv("IMAGES_MODEL", "gpt-image-1")
+IMAGES_SIZE  = os.getenv("IMAGES_SIZE", "1024x1024")  # ← ここを追加
+
+# 本番で鍵が未設定なら停止して気づけるように（任意）
+if not DEBUG and not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY is not set. Put it in backend/.env or environment.")

@@ -142,7 +142,7 @@ export default function Page() {
 
   // リクエスト多重送信防止＆タイムアウト
   const inflight = useRef<AbortController | null>(null);
-  function newSignal(ms = 30000) {
+  function newSignal(ms = 120000) {
     if (inflight.current) inflight.current.abort();
     const ac = new AbortController();
     inflight.current = ac;
@@ -205,11 +205,11 @@ export default function Page() {
     setNotice(null);
     try {
       type RefineResponse = { url: string };
-      const data = await postJSON<RefineResponse>(`${API_BASE}/api/complete`, {
+      const data = await postJSON<RefineResponse>(`${API_BASE}/api/refine`, {
         selected: resultUrl,
         note: fixNote,
         context: payload,
-      }, newSignal());
+      }, newSignal(120000));
       setResultUrl(data.url || resultUrl);
       setNotice('修正完了: 画像を更新しました。');
     } catch (err: any) {
@@ -225,7 +225,7 @@ export default function Page() {
     setLoading(true);
     setNotice(null);
     try {
-      await postJSON(`${API_BASE}/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal());
+      await postJSON(`${API_BASE}/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal(120000));
       setNotice('保存しました');
     } catch (err: any) {
       setNotice(`保存に失敗しました: ${err?.message ?? 'unknown error'}`);

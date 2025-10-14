@@ -1,0 +1,155 @@
+# Taskfile.yaml
+version: '3'
+
+vars:
+  COMPOSE: docker compose
+  FRONT_URL: http://localhost:3000
+  BACK_URL: http://localhost:8000
+
+tasks:
+  # ========= 基本 =========
+  up:
+    desc: DB→backend→frontend を起動（バックグラウンド）
+    cmds:
+      - "{{.COMPOSE}} up -d db backend"
+      - "{{.COMPOSE}} up -d frontend"
+      - "{{.COMPOSE}} ps"
+
+  down:
+    desc: 全停止（ボリュームは残す）
+    cmds:
+      - "{{.COMPOSE}} down"
+
+  down:clean:
+    desc: 全停止＋ボリュームも削除（DB初期化に注意）
+    cmds:
+      - "{{.COMPOSE}} down -v"
+
+  rebuild:
+    desc: 依存を含め全サービス再ビルド
+    cmds:
+      - "{{.COMPOSE}} build --no-cache"
+      - task: up
+
+  # ========= 個別操作 =========
+  up:db:
+    desc: DBのみ起動
+    cmds: ["{{.COMPOSE}} up -d db"]
+
+  up:backend:
+    desc: backendのみ起動（dbに依存）
+    deps: [up:db]
+    cmds: ["{{.COMPOSE}} up -d backend"]
+
+  up:frontend:
+    desc: frontendのみ起動（backendに依存）
+    deps: [up:backend]
+    cmds: ["{{.COMPOSE}} up -d frontend"]
+
+  restart:
+    desc: backend / frontend を再起動
+    cmds:
+      - "{{.COMPOSE}} restart backend"
+      - "{{.COMPOSE}} restart frontend"
+
+  logs:
+    desc: backend のログをフォロー
+    cmds: ["{{.COMPOSE}} logs -f backend"]
+
+  logs:fe:
+    desc: frontend のログをフォロー
+    cmds: ["{{.COMPOSE}} logs -f frontend"]
+
+  shell:backend:
+    desc: backend のシェルに入る
+    cmds: ["{{.COMPOSE}} exec backend sh"]
+
+  shell:frontend:
+    desc: frontend のシェルに入る
+    cmds: ["{{.COMPOSE}} exec frontend sh"]
+
+  # ========= Django 実務 =========
+  migrate:
+    desc: makemigrations → migrate
+    cmds:
+      - "{{.COMPOSE}} run --rm backend python manage.py makemigrations"
+      - "{{.COMPOSE}} run --rm backend python manage.py migrate"
+
+  su:
+    desc: スーパーユーザー作成
+    cmds: ["{{.COMPOSE}} run --rm backend python manage.py createsuperuser"]
+
+  collectstatic:
+    desc: 静的ファイル収集
+    cmds: ["{{.COMPOSE}} run --rm backend python manage.py collectstatic --noinput"]
+
+  # ========= 疎通・デバッグ =========
+  ping:be:
+    desc: BackendのルートにHEAD（200/404でもOK）
+    cmds: ["curl -I {{.BACK_URL}}/ || true"]
+
+  api:generate:
+    desc: /api/generate をテストPOST
+    cmds:
+      - |
+        curl -sS -X POST {{.BACK_URL}}/api/generate \
+          -H 'Content-Type: application/json' \
+          -d '{"gender":"female","hair":"黒髪ロング","age":22,"similarTo":"","features":"二重"}' | jq . || true
+
+  api:refine:
+    desc: /api/refine をダミーでテスト（result.png を想定）
+    cmds:
+      - |
+        curl -sS -X POST {{.BACK_URL}}/api/refine \
+          -H 'Content-Type: application/json' \
+          -d '{"selected":"/media/result.png","note":"小ぶりのシルバーのピアスを自然に追加","context":{"gender":"female"}}' \
+        | jq . || true
+
+  # ========= フロント依存導入 =========
+  fe:deps:
+    desc: Chakra / Emotion / three / vanta をインストール
+    cmds:
+      - "{{.COMPOSE}} exec frontend sh -lc 'npm i -S @chakra-ui/react @emotion/react three vanta'"
+      - "{{.COMPOSE}} exec frontend sh -lc 'npm i -D @types/three || true'"
+
+  # ========= ポート衝突対策（Mac向け） =========
+  kill:3000:
+    desc: 3000番を占有しているプロセスを強制終了
+    cmds:
+      - "lsof -nP -iTCP:3000 -sTCP:LISTEN | awk 'NR>1 {print $2}' | xargs -r kill -9 || true"
+
+  kill:8000:
+    desc: 8000番を占有しているプロセスを強制終了
+    cmds:
+      - "lsof -nP -iTCP:8000 -sTCP:LISTEN | awk 'NR>1 {print $2}' | xargs -r kill -9 || true"
+
+  # ========= OpenAI チェック =========
+  openai:models:
+    desc: コンテナ内で利用可能なモデル一覧を表示（gpt-image含むか確認）
+    cmds:
+      - |
+        {{.COMPOSE}} run --rm backend python - <<'PY'
+        import os
+        from openai import OpenAI
+        key = os.environ.get("OPENAI_API_KEY")
+        org = os.environ.get("OPENAI_ORG_ID")
+        print("KEY set:", bool(key), "ORG:", org)
+        try:
+          c = OpenAI(api_key=key, organization=org)
+          ids = [m.id for m in c.models.list().data]
+          print([i for i in ids if "gpt-image" in i or "image" in i])
+        except Exception as e:
+          print("ERR:", e)
+        PY
+
+  # ========= 便利 =========
+  ps:
+    desc: コンテナ一覧
+    cmds: ["{{.COMPOSE}} ps"]
+
+  doctor:
+    desc: よく詰まるポイントの簡易診断
+    cmds:
+      - echo "== Ports ==" && (lsof -nP -iTCP:3000 -sTCP:LISTEN || true) && (lsof -nP -iTCP:8000 -sTCP:LISTEN || true)
+      - echo "== Docker ps ==" && {{.COMPOSE}} ps
+      - echo "== Backend /media ==" && {{.COMPOSE}} exec backend sh -lc 'ls -l media || true'

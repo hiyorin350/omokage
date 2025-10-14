@@ -1,11 +1,12 @@
 # api/views.py
-import io, json, os, base64, requests
+import io, json, os, base64, requests, mimetypes
 from urllib.parse import urlparse
 from django.http import JsonResponse, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from openai import OpenAI
 from .utils import save_base64_png
+from pathlib import Path
 
 client = OpenAI(
     api_key=settings.OPENAI_API_KEY,
@@ -71,6 +72,33 @@ def _download_to_bytes(url: str) -> bytes:
     r.raise_for_status()
     return r.content
 
+def _load_image_filelike(selected_url: str) -> io.BytesIO:
+    """
+    /media/～ はファイル直読み、外部URLはHTTPで取得。
+    BytesIO.name に拡張子付きの名前を必ずセット。
+    """
+    u = urlparse(selected_url)  # ← どの場合もまず分解（クエリを捨てる）
+    path = u.path  # /media/refined/xxx.png だけを取り出す
+
+    media_url = settings.MEDIA_URL.rstrip("/")
+    if path.startswith(media_url):
+        rel = path[len(media_url):].lstrip("/")
+        fs_path = Path(settings.MEDIA_ROOT) / rel
+        with open(fs_path, "rb") as f:
+            data = f.read()
+        ext = Path(fs_path).suffix or ".png"
+    else:
+        r = requests.get(selected_url, timeout=20)
+        r.raise_for_status()
+        data = r.content
+        ctype = r.headers.get("Content-Type", "").split(";")[0]
+        ext = mimetypes.guess_extension(ctype) or Path(u.path).suffix or ".png"
+
+    bio = io.BytesIO(data)
+    bio.name = f"input{ext}"  # ★ 重要：拡張子でMIME推定
+    bio.seek(0)
+    return bio
+
 @csrf_exempt
 def refine(request: HttpRequest):
     if request.method != "POST":
@@ -84,26 +112,34 @@ def refine(request: HttpRequest):
         if not selected_url:
             return JsonResponse({"error": "selected required"}, status=400)
 
-        # 選択画像を取得（/media/ 相対パスにもURLにも対応）
+        # /media 始まりなら絶対URLに
         if selected_url.startswith("/"):
             selected_url = request.build_absolute_uri(selected_url)
-        img_bytes = _download_to_bytes(selected_url)
 
-        # 画像編集（マスクなしの全体リファイン）
-        edit = client.images.edits(
-            model="gpt-image-1",
-            image=io.BytesIO(img_bytes),
-            prompt=(
-                "元画像の人物の同一性を維持しつつ、以下の修正を反映。"
-                " 写実的・自然なトーンを保つ。"
-                f" 修正: {note} "
-                f" コンテキスト: {_prompt_from_payload(context)}"
-            ),
+        # 画像取得
+        img_file = _load_image_filelike(selected_url)
+
+        # 画像編集
+        edit = client.images.edit(
+            model=getattr(settings, "IMAGES_MODEL", "gpt-image-1"),
+            image=img_file,
+            prompt=(...),
             size=getattr(settings, "IMAGES_SIZE", "1024x1024"),
         )
-        b64 = edit.data[0].b64_json
-        rel = save_base64_png(b64, subdir="refined")
-        return JsonResponse({"url": _abs_url(request, rel)})
+        
+        # 返り値を保存
+        item = edit.data[0]
+        if getattr(item, "b64_json", None):
+            b64 = item.b64_json
+            rel = save_base64_png(b64, subdir="refined")
+            return JsonResponse({"url": _abs_url(request, rel)})
+        elif getattr(item, "url", None):
+            content = _download_to_bytes(item.url)
+            rel = save_base64_png(base64.b64encode(content).decode("ascii"), subdir="refined")
+            return JsonResponse({"url": _abs_url(request, rel)})
+        else:
+            return JsonResponse({"error": "no image returned"}, status=502)
+
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 

@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   db:
     image: postgres:15
@@ -8,14 +7,23 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: ./backend
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
-    # ここはそのまま
+    # DB が healthy になるまで待ってから migrate -> runserver
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
     env_file:
       - ./backend/.env
-    # DB ホストだけ明示的に上書き（.env 側と重複していても問題なし）
     environment:
       POSTGRES_HOST: db
     volumes:
@@ -23,26 +31,21 @@ services:
       - media:/app/media
     ports:
       - "8000:8000"
-    depends_on:
-      - db
 
   frontend:
     build: ./frontend
-    command: npm run dev -- -H 0.0.0.0   # ← 外部からアクセス可
+    command: npm run dev -- -H 0.0.0.0
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      # ★重要：ブラウザから直接Djangoを叩くなら localhost を使う
-      # （"backend" は Docker 内ホスト名で、ブラウザからは解決されません）
       NEXT_PUBLIC_API_BASE: "http://localhost:8000"
-      WATCHPACK_POLLING: "true"          # HMR安定化
-      CHOKIDAR_USEPOLLING: "true"        # HMR安定化
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     ports:
       - "3000:3000"
     depends_on:
       - backend
-
 
 volumes:
   pgdata:

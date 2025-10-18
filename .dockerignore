@@ -1,0 +1,7 @@
+.git
+node_modules
+.nx
+.next/cache
+**/.DS_Store
+**/*.log
+dist # ※ build ステージで生成→runtime にコピーするなら除外しない

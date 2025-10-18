@@ -7,12 +7,8 @@ RUN apk add --no-cache libc6-compat
 # RUN apk add --no-cache python3 make g++
 
 # 依存インストール
-COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* .npmrc* ./
-RUN if [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm i --frozen-lockfile; \
-  elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  else npm i; fi
-
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 # 残りのソース
 COPY . /app
 

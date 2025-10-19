@@ -6,3 +6,4 @@ Pillow
 requests
 openai>=1,<2
 psycopg2-binary
+gunicorn>=22,<24   # ← 推奨レンジ（固定なら gunicorn==23.0.0 でもOK）

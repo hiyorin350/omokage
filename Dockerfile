@@ -39,6 +39,8 @@ RUN python -m venv /venv \
 
 # アプリ本体
 COPY backend/ ./backend
+RUN /venv/bin/python -c "import gunicorn, sys; print('gunicorn', gunicorn.__version__); print(sys.version)"
+
 # 必要なら静的収集（環境変数が要る場合は適宜設定）
 # RUN /venv/bin/python backend/manage.py collectstatic --noinput || true
 

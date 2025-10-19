@@ -1,36 +1,37 @@
-# =======================
-#  Frontend build (Next + npm)
-# =======================
+# =========================================================
+#  Frontend build (Next + npm / lockfile 前提: npm ci)
+# =========================================================
 FROM node:22-alpine AS fe
 WORKDIR /fe/frontend
 ENV NEXT_TELEMETRY_DISABLED=1
-# 一部ネイティブ依存の互換層
+
+# ネイティブ依存の互換層（必要に応じて）
 RUN apk add --no-cache libc6-compat
 
 # 依存は先にコピー（キャッシュ最適化）
+# ※ A方針：必ず package-lock.json をコミットしておくこと
 COPY frontend/package.json frontend/package-lock.json ./
-# dev 依存も含めて確実に再現（CI向け）
 RUN npm ci
 
 # ソースをコピーして build（standalone 生成）
 COPY frontend/ ./
-# next.config.js で output: 'standalone' を設定しておくこと
+# next.config.js 側で output: 'standalone' を設定しておく
 RUN npm run build
 # → .next/standalone, .next/static, public が生成される想定
 
 
-# =======================
+# =========================================================
 #  Backend build (Django + pip)
-# =======================
+# =========================================================
 FROM python:3.11-slim AS be
 WORKDIR /be
 
-# psycopg2 等のビルドに必要（不要なら削る）
+# psycopg2 等のビルドに必要（不要なら削除可能）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# 依存インストール
+# 依存インストール（venv）
 COPY backend/requirements.txt .
 RUN python -m venv /venv \
  && /venv/bin/pip install --upgrade pip \
@@ -42,10 +43,10 @@ COPY backend/ ./backend
 # RUN /venv/bin/python backend/manage.py collectstatic --noinput || true
 
 
-# =======================
-#  Runtime (single container: Node + Gunicorn via Supervisor)
-# =======================
-# Node 22 ベースに Python ランタイムも入れて venv を動かす
+# =========================================================
+#  Runtime (単一コンテナ: Node(Next) + Gunicorn を Supervisor で管理)
+# =========================================================
+# ランタイムは Debian 系にして、be ステージの venv をそのまま持ち込む
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
@@ -70,10 +71,13 @@ COPY --from=be /be/backend ./backend
 
 # ---- Supervisor 設定 ----
 # リポジトリ直下の deploy/supervisord.conf を参照
-# 例:
-# [program:backend]  command=/venv/bin/gunicorn config.wsgi:application -b 0.0.0.0:10001 --workers 3 --timeout 60
-# [program:frontend] command=node server.js -p ${PORT}
+# [program:backend] で `gunicorn config.wsgi:application -b 0.0.0.0:10001`
+# [program:frontend] で `node server.js -p ${PORT}`
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# 任意のヘルスチェック（Next 側の / に対して）
+# HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
+#   CMD curl -fsS http://127.0.0.1:${PORT}/ || exit 1
 
 EXPOSE 10000
 CMD ["supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]

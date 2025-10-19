@@ -60,6 +60,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor ca-certificates curl python3 libpython3.11 \
  && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /var/log/supervisor
+
 # ---- Frontend (standalone server + static + public) ----
 COPY --from=fe /fe/frontend/.next/standalone ./frontend/.next/standalone
 COPY --from=fe /fe/frontend/.next/static     ./frontend/.next/static

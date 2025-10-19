@@ -1,0 +1,17 @@
+{
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@types/three": "^0.179.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^3.24.2",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "framer-motion": "^12.23.12",
+    "three": "^0.179.1",
+    "vanta": "^0.5.24"
+  }
+}

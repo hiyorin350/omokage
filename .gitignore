@@ -7,7 +7,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
-package*
 
 # ------------------------------
 # Python／Django

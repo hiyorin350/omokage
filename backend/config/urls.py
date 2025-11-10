@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 from api import views as api_views
 
 urlpatterns = [
+    path("api/healthz", lambda r: JsonResponse({"ok": True})),
     path("admin/", admin.site.urls),
     path("api/generate", api_views.generate),
     path("api/refine", api_views.refine),

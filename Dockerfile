@@ -1,3 +1,22 @@
+# =======================
+#  Frontend build stage (fe)
+# =======================
+FROM node:22-alpine AS fe
+WORKDIR /fe/frontend
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN apk add --no-cache libc6-compat python3 make g++ pkgconfig
+
+# lockfile 前提（npm ci）
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# ソース投入→standalone ビルド（next.config.js: output: 'standalone' 必須）
+COPY frontend/ ./
+RUN npm run build
+
+# =======================
+#  Runtime (Next 入口 + Django 同居)
+# =======================
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=10000
@@ -7,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor ca-certificates curl python3 python3-venv build-essential libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Frontend 配置（推奨レイアウト：/app 直下）
+# Frontend 配置（/app 直下に揃える）
 COPY --from=fe /fe/frontend/.next/standalone/. ./
 COPY --from=fe /fe/frontend/.next/static       ./.next/static
 COPY --from=fe /fe/frontend/public             ./public
@@ -22,12 +41,12 @@ RUN python3 -m venv /app/venv \
 # アプリ本体
 COPY backend/ ./backend
 
-# （任意）存在確認をビルド時に実行：失敗すればここで気づける
+# （任意）存在確認
 RUN /app/venv/bin/python -V && /app/venv/bin/python -c "import gunicorn; print('gunicorn ok')"
 
 # Supervisor 設定
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
 RUN mkdir -p /var/log/supervisor
+
 EXPOSE 10000
 CMD ["supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]

@@ -13,9 +13,9 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "framer-motion": "^12.23.12",
-    "next": "15.4.4",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "next": "^15.4.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "three": "^0.179.1",
     "vanta": "^0.5.24"
   },

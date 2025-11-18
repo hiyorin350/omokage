@@ -15,7 +15,6 @@ services:
 
   backend:
     build: ./backend
-    # DB が healthy になるまで待ってから migrate -> runserver
     depends_on:
       db:
         condition: service_healthy
@@ -32,10 +31,12 @@ services:
     ports:
       - "8000:8000"
 
-  frontend:
+  frontend:                        # ★ services の中にいること！
     build:
       context: .
-      dockerfile: ./Dockerfile  # ← 大文字に＆ルートの Dockerfile を使う
+      dockerfile: ./Dockerfile
+      target: fe-dev               # ★ dev ステージを使う
+    working_dir: /app
     command: npm run dev -- -H 0.0.0.0
     volumes:
       - ./frontend:/app

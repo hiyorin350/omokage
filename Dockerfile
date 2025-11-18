@@ -3,7 +3,6 @@
 # =======================
 FROM node:22-alpine AS fe
 WORKDIR /fe/frontend
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN apk add --no-cache libc6-compat python3 make g++ pkgconfig
 
 # lockfile 前提（npm ci）
@@ -50,3 +49,23 @@ RUN mkdir -p /var/log/supervisor
 
 EXPOSE 10000
 CMD ["supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
+
+# =======================
+#  Frontend dev stage
+# =======================
+FROM node:22-alpine AS fe-dev
+WORKDIR /app
+
+RUN apk add --no-cache libc6-compat python3 make g++ pkgconfig
+
+# 依存インストール
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# ソースをコピー（初期状態）
+COPY frontend/ ./
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# dev 用エントリポイント
+CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0"]

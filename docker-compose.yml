@@ -33,7 +33,9 @@ services:
       - "8000:8000"
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: ./Dockerfile  # ← 大文字に＆ルートの Dockerfile を使う
     command: npm run dev -- -H 0.0.0.0
     volumes:
       - ./frontend:/app

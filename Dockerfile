@@ -1,4 +1,25 @@
 # =======================
+#  Frontend dev stage
+# =======================
+FROM node:22-alpine AS fe-dev
+WORKDIR /app
+
+RUN apk add --no-cache libc6-compat python3 make g++ pkgconfig
+
+# 依存インストール
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# ソースをコピー（初期状態）
+COPY frontend/ ./
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# dev 用エントリポイント
+CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0"]
+
+
+# =======================
 #  Frontend build stage (fe)
 # =======================
 FROM node:22-alpine AS fe
@@ -13,8 +34,9 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
+
 # =======================
-#  Runtime (Next 入口 + Django 同居)
+#  Runtime (Next 入口 + Django 同居)  ← ★ 最後にする
 # =======================
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
@@ -49,23 +71,3 @@ RUN mkdir -p /var/log/supervisor
 
 EXPOSE 10000
 CMD ["supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
-
-# =======================
-#  Frontend dev stage
-# =======================
-FROM node:22-alpine AS fe-dev
-WORKDIR /app
-
-RUN apk add --no-cache libc6-compat python3 make g++ pkgconfig
-
-# 依存インストール
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-
-# ソースをコピー（初期状態）
-COPY frontend/ ./
-
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# dev 用エントリポイント
-CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0"]

@@ -84,14 +84,6 @@ const OverlayLines = () => (
   </chakra.svg>
 );
 
-// API は相対パス固定（本番は Nginx / 開発は Next の rewrites で /api を中継）
-const API = {
-  generate: '/api/generate',
-  refine: '/api/refine',
-  complete: '/api/complete',
-};
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
-
 // フェッチ（JSON＋詳細エラー＋タイムアウト＋Cookie対応）
 async function postJSON<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
@@ -163,7 +155,7 @@ export default function Page() {
     setNotice(null);
     try {
       type GenerateResponse = { options: [string, string] };
-      const data = await postJSON<GenerateResponse>(`${API_BASE}/api/generate`, payload);
+      const data = await postJSON<GenerateResponse>(`/api/generate`, payload);
       const [a, b] = data.options ?? [];
       setOptionA(a ?? '/images/sample_a.PNG');
       setOptionB(b ?? '/images/sample_b.PNG');
@@ -205,7 +197,7 @@ export default function Page() {
     setNotice(null);
     try {
       type RefineResponse = { url: string };
-      const data = await postJSON<RefineResponse>(`${API_BASE}/api/refine`, {
+      const data = await postJSON<RefineResponse>(`/api/refine`, {
         selected: resultUrl,
         note: fixNote,
         context: payload,
@@ -225,7 +217,7 @@ export default function Page() {
     setLoading(true);
     setNotice(null);
     try {
-      await postJSON(`${API_BASE}/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal(120000));
+      await postJSON(`/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal(120000));
       setNotice('保存しました');
     } catch (err: any) {
       setNotice(`保存に失敗しました: ${err?.message ?? 'unknown error'}`);

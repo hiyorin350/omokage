@@ -1,20 +1,22 @@
 import type { NextConfig } from 'next'
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-    // Node.js runtime 前提（standalone を推奨）
-    output: 'standalone',
-    async rewrites() {
-      return [
-        {
-          source: '/api/:path*',
-          destination: 'http://127.0.0.1:10001/api/:path*',
-        },
-      ]
-    },
-    eslint: { ignoreDuringBuilds: true },
-  }
-  module.exports = nextConfig;
+const API_TARGET =
+  process.env.API_TARGET ||
+  (process.env.NODE_ENV === 'production'
+    ? 'http://127.0.0.1:10001' // Render runtime コンテナから見た Django
+    : 'http://backend:8000')   // docker compose 開発時の backend サービス
 
-const API_TARGET = process.env.API_TARGET || 'http://localhost:8000'
-// Docker内で動かす時は compose から API_TARGET=http://backend:8000 を渡す
+const nextConfig: NextConfig = {
+  output: 'standalone',
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${API_TARGET}/api/:path*`,
+      },
+    ]
+  },
+  eslint: { ignoreDuringBuilds: true },
+}
+
+module.exports = nextConfig

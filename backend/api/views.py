@@ -13,8 +13,23 @@ client = OpenAI(
     organization=(settings.OPENAI_ORG_ID or None),
 )
 
+def _media_path(rel_path: str) -> str:
+    path = rel_path
+
+    # "media/generated/xxx.png" → "generated/xxx.png" に正規化
+    if path.startswith("media/"):
+        path = path.split("/", 1)[1]
+
+    # "/media/..." に揃える
+    if not path.startswith("/"):
+        # MEDIA_URL = "/media/"
+        path = settings.MEDIA_URL.rstrip("/") + "/" + path.lstrip("/")
+
+    return path  # 例: "/media/generated/xxx.png"
+
 def _abs_url(request: HttpRequest, rel_path: str) -> str:
-    return request.build_absolute_uri(settings.MEDIA_URL + rel_path.split("/", 1)[1] if rel_path.startswith("media/") else rel_path if rel_path.startswith("/") else settings.MEDIA_URL + rel_path)
+    # これまでの名前を踏襲しつつ、中身は「相対URL」だけ返すようにする
+    return _media_path(rel_path)
 
 def _prompt_from_payload(p: dict) -> str:
     gender = p.get("gender") or ""
@@ -26,8 +41,8 @@ def _prompt_from_payload(p: dict) -> str:
     # 有名人そっくり要求は避けて「雰囲気・特徴」に変換（オリジナル人物で）
     vibe = f"（{similar}の雰囲気を連想させる要素）" if similar else ""
     return (
-        "ポートレート写真。新規オリジナル人物を生成。"
-        "特定の実在人物を模倣しない。肌や髪の質感は自然、過度な補正なし。"
+        "ポートレート写真。"
+        "肌や髪の質感は自然、過度な補正なし。"
         f" 性別: {gender}。年齢: {age}。髪型/色: {hair}。特徴: {features}。{vibe}"
         " 背景はシンプル、正面から肩上、フォトリアル、照明は柔らかい。"
     )

@@ -4,10 +4,13 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   async rewrites() {
     return [
-      {
-        source: '/api/:path*',
-        destination: 'http://backend:8000/api/:path*',  // 開発中は固定でOK
-      },
+      // ★ /api の rewrite は一旦やめる
+      // {
+      //   source: '/api/:path*',
+      //   destination: 'http://backend:8000/api/:path*',
+      // },
+
+      // /media だけ Django に飛ばす（これはこのままでOK）
       {
         source: '/media/:path*',
         destination: 'http://backend:8000/media/:path*',

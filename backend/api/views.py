@@ -38,8 +38,7 @@ def _prompt_from_payload(p: dict) -> str:
     features = p.get("features") or ""
     similar = p.get("similarTo") or ""
 
-    # 有名人そっくり要求は避けて「雰囲気・特徴」に変換（オリジナル人物で）
-    vibe = f"（{similar}の雰囲気を連想させる要素）" if similar else ""
+    vibe = f"（{similar}に似ている）" if similar else ""
     return (
         "ポートレート写真。"
         "肌や髪の質感は自然、過度な補正なし。"

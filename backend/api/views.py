@@ -70,7 +70,6 @@ def generate(request: HttpRequest):
 
     prompt = _prompt_from_payload(payload)
     try:
-        # 2枚作る（nパラメータ未使用で2回呼ぶのが互換的）
         rel_a = _generate_one_image(prompt)
         rel_b = _generate_one_image(prompt)
         return JsonResponse({
@@ -80,6 +79,8 @@ def generate(request: HttpRequest):
             ]
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # ★ これで docker logs にスタックトレースが出る
         return JsonResponse({"error": str(e)}, status=500)
 
 def _download_to_bytes(url: str) -> bytes:

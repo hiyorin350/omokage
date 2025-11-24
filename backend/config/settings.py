@@ -15,7 +15,7 @@ def _csv_env(key: str, default: str = ""):
 # --- 基本 ---
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS", ".onrender.com,localhost,127.0.0.1,backend")
+ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS", "omokage-webapp.onrender.com,localhost,127.0.0.1,backend")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_ORG_ID  = os.getenv("OPENAI_ORG_ID", "")
 

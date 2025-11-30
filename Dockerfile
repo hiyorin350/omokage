@@ -26,13 +26,17 @@ FROM node:22-alpine AS fe
 WORKDIR /fe/frontend
 RUN apk add --no-cache libc6-compat python3 make g++ pkgconfig
 
+# ★ ここで runtime モードを宣言（Next のビルド時に見える）
+ENV RUNTIME_MODE=runtime
+
 # lockfile 前提（npm ci）
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-# ソース投入→standalone ビルド（next.config.js: output: 'standalone' 必須）
+# ソース投入→standalone ビルド
 COPY frontend/ ./
 RUN npm run build
+
 
 
 # =======================

@@ -8,8 +8,12 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   async rewrites() {
     return [
-      // ※ /api は API Route でやっているなら消してOK
-      //   まだ rewrite 方式ならここも BACKEND_INTERNAL_ORIGIN に合わせてね
+      // ★ /api を rewrite 方式でやっているならここも揃える
+      // いまは API Route 経由ならこれは不要
+      // {
+      //   source: '/api/:path*',
+      //   destination: `${BACKEND_INTERNAL_ORIGIN}/api/:path*`,
+      // },
 
       {
         source: '/media/:path*',

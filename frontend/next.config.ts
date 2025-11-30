@@ -1,19 +1,19 @@
+// frontend/next.config.ts
 import type { NextConfig } from 'next'
+
+const BACKEND_INTERNAL_ORIGIN =
+  process.env.BACKEND_INTERNAL_ORIGIN || 'http://backend:8000';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
   async rewrites() {
     return [
-      // ★ /api の rewrite は一旦やめる
-      // {
-      //   source: '/api/:path*',
-      //   destination: 'http://backend:8000/api/:path*',
-      // },
+      // ※ /api は API Route でやっているなら消してOK
+      //   まだ rewrite 方式ならここも BACKEND_INTERNAL_ORIGIN に合わせてね
 
-      // /media だけ Django に飛ばす（これはこのままでOK）
       {
         source: '/media/:path*',
-        destination: 'http://backend:8000/media/:path*',
+        destination: `${BACKEND_INTERNAL_ORIGIN}/media/:path*`,
       },
     ]
   },

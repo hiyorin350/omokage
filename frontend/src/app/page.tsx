@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   Box,
   Container,
-  chakra,
   Stack,
   Heading,
   Text,
@@ -21,88 +20,9 @@ import {
   Alert,
 } from '@chakra-ui/react';
 
-// === 背景: Vanta.js NET（WebGL） ===
-const VantaNetBg = () => {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const effectRef = useRef<any>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!ref.current || effectRef.current) return;
-      const THREE = await import('three');
-      const NET = (await import('vanta/dist/vanta.net.min')).default;
-      if (!mounted) return;
-      effectRef.current = NET({
-        el: ref.current,
-        THREE,
-        backgroundAlpha: 0.0,
-        color: 0x7c3aed,
-        points: 12.0,
-        maxDistance: 20.0,
-        spacing: 18.0,
-        mouseControls: false,
-        touchControls: false,
-        gyroControls: false,
-        scale: 1.0,
-        scaleMobile: 1.0,
-      });
-    })();
-    return () => {
-      mounted = false;
-      if (effectRef.current) {
-        try { effectRef.current.destroy(); } catch {}
-        effectRef.current = null;
-      }
-    };
-  }, []);
-
-  return <Box ref={ref} position="absolute" inset={0} pointerEvents="none" />;
-};
-
-// === 追加オーバーレイ: 数本の装飾ライン ===
-const OverlayLines = () => (
-  <chakra.svg
-    position="absolute"
-    inset={0}
-    pointerEvents="none"
-    viewBox="0 0 100 100"
-    preserveAspectRatio="none"
-    opacity={0.55}
-  >
-    <defs>
-      <linearGradient id="gradLine" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%"  stopColor="#7c3aed" stopOpacity={0} />
-        <stop offset="50%" stopColor="#7c3aed" stopOpacity={0.5} />
-        <stop offset="100%" stopColor="#06b6d4" stopOpacity={0} />
-      </linearGradient>
-    </defs>
-
-    <line x1={0}  y1={15} x2={100} y2={35} stroke="url(#gradLine)" strokeWidth={0.7} />
-    <line x1={0}  y1={70} x2={100} y2={90} stroke="url(#gradLine)" strokeWidth={0.7} />
-    <line x1={15} y1={0}  x2={85}  y2={100} stroke="url(#gradLine)" strokeWidth={0.7} />
-  </chakra.svg>
-);
-
-// フェッチ（JSON＋詳細エラー＋タイムアウト＋Cookie対応）
-async function postJSON<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'same-origin',   // 将来 Cookie 認証を入れる前提
-    cache: 'no-store',
-    body: JSON.stringify(body),
-    signal,
-  });
-  const text = await res.text();
-  let data: any = undefined;
-  try { data = text ? JSON.parse(text) : undefined; } catch {}
-  if (!res.ok) {
-    const msg = (data?.error && typeof data.error === 'string') ? data.error : text || res.statusText;
-    throw new Error(msg);
-  }
-  return (data ?? {}) as T;
-}
+import VantaNetBg from './vantaNetBg';
+import OverlayLines from './overlayLines';
+import postJson from './postJson';
 
 export default function Page() {
   type Step = 1 | 2 | 3;
@@ -155,7 +75,7 @@ export default function Page() {
     setNotice(null);
     try {
       type GenerateResponse = { options: [string, string] };
-      const data = await postJSON<GenerateResponse>(`/api/generate`, payload);
+      const data = await postJson<GenerateResponse>(`/api/generate`, payload);
       const [a, b] = data.options ?? [];
       setOptionA(a ?? '/images/sample_a.PNG');
       setOptionB(b ?? '/images/sample_b.PNG');
@@ -197,7 +117,7 @@ export default function Page() {
     setNotice(null);
     try {
       type RefineResponse = { url: string };
-      const data = await postJSON<RefineResponse>(`/api/refine`, {
+      const data = await postJson<RefineResponse>(`/api/refine`, {
         selected: resultUrl,
         note: fixNote,
         context: payload,
@@ -217,7 +137,7 @@ export default function Page() {
     setLoading(true);
     setNotice(null);
     try {
-      await postJSON(`/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal(120000));
+      await postJson(`/api/complete`, { imageUrl: resultUrl, meta: payload }, newSignal(120000));
       setNotice('保存しました');
     } catch (err: any) {
       setNotice(`保存に失敗しました: ${err?.message ?? 'unknown error'}`);

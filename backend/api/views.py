@@ -7,6 +7,7 @@ from django.conf import settings
 from openai import OpenAI
 from .utils import save_base64_png
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 client = OpenAI(
     api_key=settings.OPENAI_API_KEY,
@@ -69,8 +70,12 @@ def generate(request: HttpRequest):
 
     prompt = _prompt_from_payload(payload)
     try:
-        rel_a = _generate_one_image(prompt)
-        rel_b = _generate_one_image(prompt)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_a = ex.submit(_generate_one_image, prompt)
+            fut_b = ex.submit(_generate_one_image, prompt)
+            rel_a = fut_a.result()
+            rel_b = fut_b.result()
+
         return JsonResponse({
             "options": [
                 _abs_url(request, rel_a),

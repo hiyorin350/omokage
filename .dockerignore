@@ -1,5 +1,9 @@
 .git
 node_modules
+frontend/node_modules
+frontend/.next
+backend/venv
+backend/media
 .nx
 .next/cache
 **/.DS_Store

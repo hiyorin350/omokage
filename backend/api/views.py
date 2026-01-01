@@ -1,4 +1,3 @@
-# api/views.py
 import io, json, os, base64, requests, mimetypes
 from urllib.parse import urlparse
 from django.http import JsonResponse, HttpRequest
@@ -127,8 +126,8 @@ def refine(request: HttpRequest):
     try:
         payload = json.loads(request.body.decode("utf-8"))
         selected_url = payload.get("selected")
-        note = payload.get("note", "")
-        context = payload.get("context", {})
+        note = (payload.get("note") or "").strip()
+        context = payload.get("context", {}) or {}
         if not selected_url:
             return JsonResponse({"error": "selected required"}, status=400)
 
@@ -139,11 +138,22 @@ def refine(request: HttpRequest):
         # 画像取得
         img_file = _load_image_filelike(selected_url)
 
+        def _refine_prompt(note: str, ctx: dict) -> str:
+            """
+            元の生成条件（ctx）をベースに、利用者の修正指示（note）を差し込んだプロンプトを返す。
+            """
+            base = _prompt_from_payload(ctx) if ctx else "ポートレート写真。正面から肩上、フォトリアル。"
+            if note:
+                fix = f" 元画像の顔立ち・ライティングを保持しつつ、次を反映: {note}。"
+            else:
+                fix = " 元画像の雰囲気を保ち、より自然で解像感の高い仕上がりにする。"
+            return base + " " + fix
+
         # 画像編集
         edit = client.images.edit(
             model=getattr(settings, "IMAGES_MODEL", "gpt-image-1"),
             image=img_file,
-            prompt=(...),
+            prompt=_refine_prompt(note, context),
             size=getattr(settings, "IMAGES_SIZE", "1024x1024"),
         )
         

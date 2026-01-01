@@ -40,7 +40,7 @@ def _prompt_from_payload(p: dict) -> str:
 
     vibe = f"（{similar}に似ている）" if similar else ""
     return (
-        "ポートレート写真。"
+        "ポートレート写真。人種指定がなければ日本人。"
         "肌や髪の質感は自然、過度な補正なし。"
         f" 性別: {gender}。年齢: {age}。髪型/色: {hair}。特徴: {features}。{vibe}"
         " 背景はシンプル、正面から肩上、フォトリアル、照明は柔らかい。"

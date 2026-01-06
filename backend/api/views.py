@@ -1,61 +1,8 @@
-import io, json, os, base64, requests, mimetypes
-from urllib.parse import urlparse
+import json
 from django.http import JsonResponse, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
-from django.conf import settings
-from openai import OpenAI
-from .utils import save_base64_png
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
-client = OpenAI(
-    api_key=settings.OPENAI_API_KEY,
-    organization=(settings.OPENAI_ORG_ID or None),
-)
-
-def _media_path(rel_path: str) -> str:
-    path = rel_path
-
-    # "media/generated/xxx.png" → "generated/xxx.png" に正規化
-    if path.startswith("media/"):
-        path = path.split("/", 1)[1]
-
-    # "/media/..." に揃える
-    if not path.startswith("/"):
-        # MEDIA_URL = "/media/"
-        path = settings.MEDIA_URL.rstrip("/") + "/" + path.lstrip("/")
-
-    return path  # 例: "/media/generated/xxx.png"
-
-def _abs_url(request: HttpRequest, rel_path: str) -> str:
-    # これまでの名前を踏襲しつつ、中身は「相対URL」だけ返すようにする
-    return _media_path(rel_path)
-
-def _prompt_from_payload(p: dict) -> str:
-    gender = p.get("gender") or ""
-    hair = p.get("hair") or ""
-    age = p.get("age") or ""
-    features = p.get("features") or ""
-    similar = p.get("similarTo") or ""
-
-    vibe = f"（{similar}に似ている）" if similar else ""
-    return (
-        "ポートレート写真。人種指定がなければ日本人。"
-        "肌や髪の質感は自然、過度な補正なし。"
-        f" 性別: {gender}。年齢: {age}。髪型/色: {hair}。特徴: {features}。{vibe}"
-        " 背景はシンプル、正面から肩上、フォトリアル、照明は柔らかい。"
-    )
-
-def _generate_one_image(prompt: str, size: str | None = None) -> str:
-    size = size or getattr(settings, "IMAGES_SIZE", "1024x1024")
-    result = client.images.generate(
-        model=getattr(settings, "IMAGES_MODEL", "gpt-image-1"),
-        prompt=prompt,
-        size=size,
-    )
-    b64 = result.data[0].b64_json
-    rel = save_base64_png(b64, subdir="generated")
-    return rel
+from .image_service import generate_pair, refine_pair
 
 @csrf_exempt
 def generate(request: HttpRequest):
@@ -67,56 +14,8 @@ def generate(request: HttpRequest):
     except Exception:
         return JsonResponse({"error": "invalid json"}, status=400)
 
-    prompt = _prompt_from_payload(payload)
-    try:
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            fut_a = ex.submit(_generate_one_image, prompt)
-            fut_b = ex.submit(_generate_one_image, prompt)
-            rel_a = fut_a.result()
-            rel_b = fut_b.result()
-
-        return JsonResponse({
-            "options": [
-                _abs_url(request, rel_a),
-                _abs_url(request, rel_b),
-            ]
-        })
-    except Exception as e:
-        import traceback
-        traceback.print_exc()  # ★ これで docker logs にスタックトレースが出る
-        return JsonResponse({"error": str(e)}, status=500)
-
-def _download_to_bytes(url: str) -> bytes:
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    return r.content
-
-def _load_image_filelike(selected_url: str) -> io.BytesIO:
-    """
-    /media/～ はファイル直読み、外部URLはHTTPで取得。
-    BytesIO.name に拡張子付きの名前を必ずセット。
-    """
-    u = urlparse(selected_url)  # ← どの場合もまず分解（クエリを捨てる）
-    path = u.path  # /media/refined/xxx.png だけを取り出す
-
-    media_url = settings.MEDIA_URL.rstrip("/")
-    if path.startswith(media_url):
-        rel = path[len(media_url):].lstrip("/")
-        fs_path = Path(settings.MEDIA_ROOT) / rel
-        with open(fs_path, "rb") as f:
-            data = f.read()
-        ext = Path(fs_path).suffix or ".png"
-    else:
-        r = requests.get(selected_url, timeout=20)
-        r.raise_for_status()
-        data = r.content
-        ctype = r.headers.get("Content-Type", "").split(";")[0]
-        ext = mimetypes.guess_extension(ctype) or Path(u.path).suffix or ".png"
-
-    bio = io.BytesIO(data)
-    bio.name = f"input{ext}"  # ★ 重要：拡張子でMIME推定
-    bio.seek(0)
-    return bio
+    data = generate_pair(payload, request)
+    return JsonResponse(data)
 
 @csrf_exempt
 def refine(request: HttpRequest):
@@ -125,53 +24,17 @@ def refine(request: HttpRequest):
 
     try:
         payload = json.loads(request.body.decode("utf-8"))
-        selected_url = payload.get("selected")
-        note = (payload.get("note") or "").strip()
-        context = payload.get("context", {}) or {}
-        if not selected_url:
+        if not payload.get("selected"):
             return JsonResponse({"error": "selected required"}, status=400)
 
-        # /media 始まりなら絶対URLに
-        if selected_url.startswith("/"):
-            selected_url = request.build_absolute_uri(selected_url)
-
-        # 画像取得
-        img_file = _load_image_filelike(selected_url)
-
-        def _refine_prompt(note: str, ctx: dict) -> str:
-            """
-            元の生成条件（ctx）をベースに、利用者の修正指示（note）を差し込んだプロンプトを返す。
-            """
-            base = _prompt_from_payload(ctx) if ctx else "ポートレート写真。正面から肩上、フォトリアル。"
-            if note:
-                fix = f" 元画像の顔立ち・ライティングを保持しつつ、次を反映: {note}。"
-            else:
-                fix = " 元画像の雰囲気を保ち、より自然で解像感の高い仕上がりにする。"
-            return base + " " + fix
-
-        # 画像編集
-        edit = client.images.edit(
-            model=getattr(settings, "IMAGES_MODEL", "gpt-image-1"),
-            image=img_file,
-            prompt=_refine_prompt(note, context),
-            size=getattr(settings, "IMAGES_SIZE", "1024x1024"),
-        )
-        
-        # 返り値を保存
-        item = edit.data[0]
-        if getattr(item, "b64_json", None):
-            b64 = item.b64_json
-            rel = save_base64_png(b64, subdir="refined")
-            return JsonResponse({"url": _abs_url(request, rel)})
-        elif getattr(item, "url", None):
-            content = _download_to_bytes(item.url)
-            rel = save_base64_png(base64.b64encode(content).decode("ascii"), subdir="refined")
-            return JsonResponse({"url": _abs_url(request, rel)})
-        else:
-            return JsonResponse({"error": "no image returned"}, status=502)
+        data = refine_pair(payload, request)
+        return JsonResponse(data)
 
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse({
+            "options": ["/images/sample_a.PNG", "/images/sample_a.PNG"],
+            "error": str(e) or "internal error",
+        }, status=200)
 
 @csrf_exempt
 def complete(request: HttpRequest):

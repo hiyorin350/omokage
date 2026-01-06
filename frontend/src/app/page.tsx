@@ -1,39 +1,15 @@
 'use client';
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  ButtonGroup,
-  Card,
-  Container,
-  Field,
-  HStack,
-  Heading,
-  Image,
-  Skeleton,
-  Slider,
-  Stack,
-  Text,
-  Textarea,
-  VStack,
-} from '@chakra-ui/react';
+import { Alert, Box, Button, Container } from '@chakra-ui/react';
 
 import OverlayLines from './overlayLines';
 import VantaNetBg from './vantaNetBg';
 import postJson from './postJson';
-
-type Step = 1 | 2 | 3;
-type FormState = {
-  gender: 'male' | 'female' | null;
-  hair: string;
-  age: number;
-  similarTo: string;
-  features: string;
-};
-
-type UpdateField = <K extends keyof FormState>(key: K, value: FormState[K]) => void;
+import Step1Form from './components/Step1Form';
+import Step2Picker from './components/Step2Picker';
+import Step3Result from './components/Step3Result';
+import { FormState, Step, UpdateField } from './types';
 
 const SAMPLE_A = '/images/sample_a.PNG';
 const SAMPLE_B = '/images/sample_b.PNG';
@@ -52,6 +28,8 @@ export default function Page() {
   });
   const [optionA, setOptionA] = useState<string | null>(null);
   const [optionB, setOptionB] = useState<string | null>(null);
+  const [refineA, setRefineA] = useState<string | null>(null);
+  const [refineB, setRefineB] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [fixNote, setFixNote] = useState('');
 
@@ -81,12 +59,14 @@ export default function Page() {
     setLoading(true);
     setNotice(null);
     try {
-      type GenerateResponse = { options: [string, string] };
+      type GenerateResponse = { options: [string, string]; notice?: string; error?: string };
       const data = await postJson<GenerateResponse>(`/api/generate`, payload, newSignal());
       const [a, b] = data.options ?? [];
       setOptionA(a ?? SAMPLE_A);
       setOptionB(b ?? SAMPLE_B);
       setStep(2);
+      if (data.notice) setNotice(data.notice);
+      if (data.error) setNotice((prev) => `${data.error}${prev ? ` / ${prev}` : ''}`);
     } catch (err: any) {
       setOptionA(SAMPLE_A);
       setOptionB(SAMPLE_B);
@@ -112,6 +92,10 @@ export default function Page() {
       setStep(2);
       return;
     }
+    if (step === 4) {
+      setStep(3);
+      return;
+    }
     if (step === 2) setStep(1);
   }, [loading, step]);
 
@@ -120,20 +104,36 @@ export default function Page() {
     setLoading(true);
     setNotice(null);
     try {
-      type RefineResponse = { url: string };
+      type RefineResponse = { options: [string, string]; notice?: string; error?: string };
       const data = await postJson<RefineResponse>(
         `/api/refine`,
         { selected: resultUrl, note: fixNote, context: payload },
         newSignal(120000)
       );
-      setResultUrl(data.url || resultUrl);
-      setNotice('修正完了: 画像を更新しました。');
+      const [a, b] = data.options ?? [];
+      setRefineA(a ?? resultUrl);
+      setRefineB(b ?? resultUrl);
+      setStep(4);
+      if (data.notice) setNotice(data.notice);
+      if (data.error) setNotice((prev) => `${data.error}${prev ? ` / ${prev}` : ''}`);
     } catch (err: any) {
-      setNotice(`修正に失敗しました: ${err?.message ?? 'unknown error'}`);
+      setRefineA(resultUrl);
+      setRefineB(resultUrl);
+      setStep(4);
+      setNotice(`修正案の取得に失敗したため元画像で表示します（${err?.message ?? 'unknown error'}）`);
     } finally {
       setLoading(false);
     }
   }, [loading, resultUrl, fixNote, payload, newSignal]);
+
+  const handlePickRefine = useCallback((which: 'a' | 'b') => {
+    if (loading) return;
+    const url = which === 'a' ? refineA : refineB;
+    if (!url) return;
+    setResultUrl(url);
+    setStep(3);
+    setNotice('修正案を適用しました。');
+  }, [loading, refineA, refineB]);
 
   const handleComplete = useCallback(async () => {
     if (!resultUrl || loading) return;
@@ -181,6 +181,7 @@ export default function Page() {
             loading={loading}
             optionA={optionA ?? SAMPLE_A}
             optionB={optionB ?? SAMPLE_B}
+            title="似ているのはどっち？"
             onPick={handlePick}
           />
         )}
@@ -195,225 +196,17 @@ export default function Page() {
             onRefine={handleRefine}
           />
         )}
+
+        {step === 4 && (
+          <Step2Picker
+            loading={loading}
+            optionA={refineA ?? resultUrl ?? DEFAULT_RESULT}
+            optionB={refineB ?? resultUrl ?? DEFAULT_RESULT}
+            title="修正案を選んでください"
+            onPick={handlePickRefine}
+          />
+        )}
       </Container>
     </Box>
-  );
-}
-
-type Step1FormProps = {
-  form: FormState;
-  loading: boolean;
-  onChange: UpdateField;
-  onSubmit: (e?: React.FormEvent) => void;
-};
-
-function Step1Form({ form, loading, onChange, onSubmit }: Step1FormProps) {
-  return (
-    <Card.Root>
-      <Card.Body>
-        <Stack gap={6} as="form" onSubmit={onSubmit}>
-          <ButtonGroup attached variant="outline" w="full">
-            <Button
-              flex={1}
-              borderColor={form.gender === 'male' ? 'blue.400' : 'gray.300'}
-              color={form.gender === 'male' ? 'blue.500' : 'gray.600'}
-              onClick={() => onChange('gender', 'male')}
-              disabled={loading}
-            >
-              <Text as="span" mr={2} fontSize="lg">♂</Text>
-              男
-            </Button>
-            <Button
-              flex={1}
-              borderColor={form.gender === 'female' ? 'pink.400' : 'gray.300'}
-              color={form.gender === 'female' ? 'pink.500' : 'gray.600'}
-              onClick={() => onChange('gender', 'female')}
-              disabled={loading}
-            >
-              <Text as="span" mr={2} fontSize="lg">♀</Text>
-              女
-            </Button>
-          </ButtonGroup>
-
-          <Field.Root>
-            <Field.Label>髪型</Field.Label>
-            <Textarea
-              placeholder="例: ショートカット、ボブ、肩までのロング、黒髪、茶髪…"
-              value={form.hair}
-              onChange={(e) => onChange('hair', e.target.value)}
-              disabled={loading}
-            />
-          </Field.Root>
-
-          <Field.Root>
-            <Field.Label>年齢</Field.Label>
-            <Box px={2} py={2} w="full">
-              <Slider.Root
-                min={10}
-                max={80}
-                step={1}
-                value={[form.age]}
-                onValueChange={(e) => onChange('age', e.value[0])}
-                size="md"
-                colorPalette="pink"
-                w="full"
-                maxW="820px"
-                disabled={loading}
-              >
-                <HStack justify="space-between" mb={2}>
-                  <Slider.Label>年齢</Slider.Label>
-                  <Slider.ValueText />
-                </HStack>
-                <Slider.Control>
-                  <Slider.Track>
-                    <Slider.Range />
-                  </Slider.Track>
-                  <Slider.Thumbs />
-                  <Slider.Marks marks={[10, 20, 30, 40, 50, 60, 70, 80]} />
-                </Slider.Control>
-              </Slider.Root>
-            </Box>
-          </Field.Root>
-
-          <Field.Root>
-            <Field.Label>似ている芸能人</Field.Label>
-            <Textarea
-              placeholder="例: 〜〜（※実在の人物名は“雰囲気”として扱われます）"
-              value={form.similarTo}
-              onChange={(e) => onChange('similarTo', e.target.value)}
-              disabled={loading}
-            />
-          </Field.Root>
-
-          <Field.Root>
-            <Field.Label>特徴</Field.Label>
-            <Textarea
-              placeholder="例: 二重、鼻が高い…"
-              value={form.features}
-              onChange={(e) => onChange('features', e.target.value)}
-              disabled={loading}
-            />
-          </Field.Root>
-
-          <HStack justify="center">
-            <Button
-              type="submit"
-              colorPalette="pink"
-              px={8}
-              borderRadius="xl"
-              loading={loading}
-              loadingText="生成中…"
-            >
-              Start!!
-            </Button>
-          </HStack>
-        </Stack>
-      </Card.Body>
-    </Card.Root>
-  );
-}
-
-type Step2PickerProps = {
-  loading: boolean;
-  optionA: string;
-  optionB: string;
-  onPick: (which: 'a' | 'b') => void;
-};
-
-function Step2Picker({ loading, optionA, optionB, onPick }: Step2PickerProps) {
-  return (
-    <VStack gap={8} align="center">
-      <Heading size="md" mt={2} fontWeight="medium">
-        似ているのはどっち？
-      </Heading>
-      <Skeleton loading={loading} borderRadius="md">
-        <Image
-          src={optionA}
-          alt="option A"
-          w="220px"
-          h="220px"
-          objectFit="cover"
-          borderRadius="md"
-          border="2px solid"
-          borderColor="transparent"
-          cursor={loading ? 'default' : 'pointer'}
-          onClick={() => !loading && onPick('a')}
-        />
-      </Skeleton>
-      <Skeleton loading={loading} borderRadius="md">
-        <Image
-          src={optionB}
-          alt="option B"
-          w="220px"
-          h="220px"
-          objectFit="cover"
-          borderRadius="md"
-          border="2px solid"
-          borderColor="transparent"
-          cursor={loading ? 'default' : 'pointer'}
-          onClick={() => !loading && onPick('b')}
-        />
-      </Skeleton>
-    </VStack>
-  );
-}
-
-type Step3ResultProps = {
-  loading: boolean;
-  resultUrl: string;
-  fixNote: string;
-  onChangeFixNote: (value: string) => void;
-  onComplete: () => void;
-  onRefine: () => void;
-};
-
-function Step3Result({
-  loading,
-  resultUrl,
-  fixNote,
-  onChangeFixNote,
-  onComplete,
-  onRefine,
-}: Step3ResultProps) {
-  return (
-    <VStack gap={6} align="center">
-      <Image
-        src={resultUrl}
-        alt="result"
-        w="260px"
-        h="260px"
-        objectFit="cover"
-        borderRadius="md"
-      />
-      <HStack gap={4}>
-        <Button
-          variant="outline"
-          borderColor="blue.400"
-          color="blue.500"
-          onClick={onComplete}
-          loading={loading}
-        >
-          完成
-        </Button>
-        <Button
-          variant="outline"
-          borderColor="pink.400"
-          color="pink.500"
-          onClick={onRefine}
-          loading={loading}
-        >
-          修正
-        </Button>
-      </HStack>
-      <Field.Root>
-        <Field.Label>修正項目</Field.Label>
-        <Textarea
-          placeholder="例: もっと目がぱっちり"
-          value={fixNote}
-          onChange={(e) => onChangeFixNote(e.target.value)}
-          disabled={loading}
-        />
-      </Field.Root>
-    </VStack>
   );
 }

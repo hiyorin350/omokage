@@ -8,9 +8,8 @@ import {
   Container,
   Grid,
   GridItem,
-  Heading,
   List,
-  ListItem,
+  Heading,
   Stack,
   Text,
   VStack,
@@ -63,7 +62,7 @@ export default function DemoPage() {
   return (
     <Box as="main" minH="100dvh" py={{ base: 10, md: 14 }}>
       <Container maxW="5xl">
-        <VStack align="start" spacing={3} mb={8}>
+        <VStack align="start" gap={3} mb={8}>
           <Heading size="lg">デモ／使い方ガイド</Heading>
           <Text color="gray.600">
             実際の画像生成 API を呼ばずに、フローと操作方法だけを紹介する説明ページです。
@@ -103,12 +102,12 @@ export default function DemoPage() {
               <Card.Body>
                 <Stack gap={4}>
                   <Heading size="sm">Tips</Heading>
-                  <List spacing={3} color="gray.700">
-                    <ListItem>短くてもよいので特徴は3つ以上書くと安定しやすいです。</ListItem>
-                    <ListItem>「似ている芸能人」は雰囲気として扱われ、完全一致はしません。</ListItem>
-                    <ListItem>修正指示は「目を大きく」「髪をもう少し短く」のように単一項目で書くと反映されやすいです。</ListItem>
-                    <ListItem>API上限に達している場合はサンプル画像で進行し、通知にエラー内容が表示されます。</ListItem>
-                  </List>
+                  <List.Root gap={3} color="gray.700">
+                    <List.Item>短くてもよいので特徴は3つ以上書くと安定しやすいです。</List.Item>
+                    <List.Item>「似ている芸能人」は雰囲気として扱われ、完全一致はしません。</List.Item>
+                    <List.Item>修正指示は「目を大きく」「髪をもう少し短く」のように単一項目で書くと反映されやすいです。</List.Item>
+                    <List.Item>API上限に達している場合はサンプル画像で進行し、通知にエラー内容が表示されます。</List.Item>
+                  </List.Root>
                   <Separator />
                   <Heading size="sm">デモの目的</Heading>
                   <Text color="gray.700">
